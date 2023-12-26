@@ -1,6 +1,7 @@
 import torch
 from PIL import Image
-from torchvision import ds, trans
+from torchvision import  datasets as ds
+from torchvision import transforms as trans
 
 def loading_data(path):
     print("Now the data is loading {} ...".format(path))
