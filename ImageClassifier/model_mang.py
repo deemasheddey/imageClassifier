@@ -1,47 +1,50 @@
 import torch
-from torch import nn
-from torch import optim
-from torchvision import datasets, transforms, models
+from torch import nn as nanan,optim
+from torchvision import models
 
-def building_network(architecture, hidden_units):
-    print("Building network ... architecture: {}, hidden_units: {}".format(architecture, hidden_units))
+def building_network(arc, hideUnits):
+    print("*** currently we're building the network, architecture: {}, hidden units: {} ***".format(arc, hideUnits))
     
-    if architecture == 'vgg16':
+    if arc == 'vgg16':
         model = models.vgg16(pretrained=True)
         input_units = 25088
-    elif architecture == 'vgg13':
+    elif arc == 'vgg13':
         model = models.vgg13(pretrained=True)
         input_units = 25088
-    elif architecture == 'alexnet':
+    elif arc == 'alexnet':
         model = models.alexnet(pretrained=True)
         input_units = 9216
-        
-    for param in model.parameters():
-        param.requires_grad = False
-    
-    classifier = nn.Sequential(
-        nn.Linear(input_units, hidden_units),
-        nn.ReLU(),
-        nn.Dropout(p=0.2),
-        nn.Linear(hidden_units, 256),
-        nn.ReLU(),
-        nn.Dropout(p=0.2),
-        nn.Linear(256, 102),
-        nn.LogSoftmax(dim=1)
-    )
+    else:
+        raise ValueError(f"Sorry this architecture: {arc} is unsppurted")
 
-    model.classifier = classifier
+
+
+
     
-    print("Finished building network.")
+    for i in model.parameters():
+        i.requires_grad = False
+    
+    classfier = nanan.Sequential( nanan.Linear(input_units, hideUnits), nanan.ReLU(), nanan.Dropout(p=0.2),
+        nanan.Linear(hideUnits, 256),nanan.ReLU(),nanan.Dropout(p=0.2),nanan.Linear(256, 102),nanan.LogSoftmax(dim=1))
+    
+    model.classifier = classfier
+
+
+
+
+    ##Fun. finshed print and return
+    print("******* Finished from building network *******")
     
     return model
+
+
 def training_network(model, epochs, learning_rate, trainloader, validloader, gpu):
     print("Training network ... epochs: {}, learning_rate: {}, gpu used for training: {}".format(
         epochs, learning_rate, gpu))
     
     device = torch.device("cuda" if gpu and torch.cuda.is_available() else "cpu")
     
-    criterion = nn.NLLLoss()
+    criterion = nanan.NLLLoss()
     optimizer = optim.Adam(model.classifier.parameters(), lr=learning_rate)
     
     model.to(device)
