@@ -3,8 +3,14 @@ from torch import nn as nanan,optim
 from torchvision import models
 
 def building_network(arc, hideUnits):
-    print("*** currently we're building the network, architecture: {}, hidden units: {} ***".format(arc, hideUnits))
+
     
+    print("==========================================")    
+
+    
+    print("*** currently we're building the network,"+
+          "architecture: {}, hidden units: {} ***".format(arc, hideUnits))
+
     if arc == 'vgg16':
         model = models.vgg16(pretrained=True)
         input_units = 25088
@@ -20,151 +26,220 @@ def building_network(arc, hideUnits):
 
 
 
-    
-    for i in model.parameters():
-        i.requires_grad = False
+   iterator = iter(model.parameters())
+    while True:
+        try:
+            i = next(iterator)
+            i.requires_grad = False
+        except StopIteration:
+            break
     
     classfier = nanan.Sequential( nanan.Linear(input_units, hideUnits), nanan.ReLU(), nanan.Dropout(p=0.2),
         nanan.Linear(hideUnits, 256),nanan.ReLU(),nanan.Dropout(p=0.2),nanan.Linear(256, 102),nanan.LogSoftmax(dim=1))
     
+    
+
+
+
     model.classifier = classfier
-
-
-
-
+    print("==========================================")    
     ##Fun. finshed print and return
     print("******* Finished from building network *******")
     
     return model
 
 
-def training_network(model, epochs, learning_rate, trainloader, validloader, gpu):
-    print("Training network ... epochs: {}, learning_rate: {}, gpu used for training: {}".format(
-        epochs, learning_rate, gpu))
-    
-    device = torch.device("cuda" if gpu and torch.cuda.is_available() else "cpu")
-    
-    criterion = nanan.NLLLoss()
-    optimizer = optim.Adam(model.classifier.parameters(), lr=learning_rate)
+def training_network(model, ep, learnrate, trloader, valloader, g_p_u):
+
+    print("==========================================")  
+    print(f"Currently we're training the network ... epochs: {ep}, learning_rate: {learnrate}, gpu used for training: {g_p_u}")
+    if g_p_u and torch.cuda.is_available():
+        device = torch.device("cuda")
+    else:
+        device = torch.device("cpu")    
+
+    Improver = optim.Adam(model.classifier.parameters(), lr=learnrate)
+
+    Standard = nanan.NLLLoss()
+    steps = 0
+    print_each = 10
+    trainLoss = 0
     
     model.to(device)
     
-    # Training the network
-    steps = 0
-    print_every = 10
-    train_loss = 0
-    
-    # Note: I looked at the notebooks from the last module and decided to do it in a similar way
-    for epoch in range(epochs):
+
+
+    for epch in range(ep):
+        
         model.train()
         
-        for inputs, labels in trainloader:
-            steps += 1
-            inputs, labels = inputs.to(device), labels.to(device)
+        for inputs, labels in trloader:
+
+
+            steps =steps+ 1
+            inputs = inputs.to(device)
+            labels= labels.to(device)
+            Improver.zero_grad()
             
-            optimizer.zero_grad()
-            
-            logps = model.forward(inputs)
-            loss = criterion(logps, labels)
+            pslog= model.forward(inputs)
+            loss = Standard(pslog, labels)
+
             loss.backward()
-            optimizer.step()
+            Improver.step()
+
+            trainLoss = trainLoss+loss.item()
             
-            train_loss += loss.item()
-            
-            if steps % print_every == 0:
+            if steps % print_each == 0:
                 model.eval()
                 
-                valid_loss = 0
-                valid_accuracy = 0
+                validloss = 0
+                validAccuracy = 0
                 
                 with torch.no_grad():
-                    for inputs, labels in validloader:
+                    for inputs, labels in valloader:
                         inputs, labels = inputs.to(device), labels.to(device)
                         
-                        logps = model.forward(inputs)
-                        batch_loss = criterion(logps, labels)
-                        valid_loss += batch_loss.item()
-                        
-                        # Calculate validation accuracy
-                        ps = torch.exp(logps)
+                        pslog = model.forward(inputs)
+                        batch_loss = Standard(pslog, labels)
+                        validloss =validloss+ batch_loss.item()
+                        ps = torch.exp(pslog)
                         top_p, top_class = ps.topk(1, dim=1)
                         equals = top_class == labels.view(*top_class.shape)
-                        valid_accuracy += torch.mean(equals.type(torch.FloatTensor)).item()
+                        validAccuracy =validAccuracy+ torch.mean(equals.type(torch.FloatTensor)).item()
+                print("==========================================")    
+
+                print("Epoch {}/{}, Train loss: {:.4f}, Valid loss: {:.4f}, Valid accuracy: {:.3f}".format(epch+1, ep, trainLoss/print_each, validloss/len(valloader), validAccuracy/len(valloader)))
                 
-                print(f"Epoch {epoch+1}/{epochs}, Train loss: {train_loss/print_every:.3f}, "
-                      f"Valid loss: {valid_loss/len(validloader):.3f}, "
-                      f"Valid accuracy: {valid_accuracy/len(validloader):.3f}")
-                
-                train_loss = 0
+                trainLoss = 0
                 
                 model.train()
+    print("==========================================")    
+
+    print("***Training network is Finished.***")   
+    print("==========================================")    
+       
+    return model, Standard
     
-    print("***Training network is Finished.***")          
-    return model, criterion
-def evaluating_model(model, testloader, criterion, gpu):
-    print("Testing network ... gpu used for testing: {}".format(gpu))
+def evaluating_model(model, tstloader, st, g_p_u):
+    print("==========================================")    
+
+    print("*** we're currently testing the network -- gpu -- used to test: {} ***".format(g_p_u))
     
-    device = torch.device("cuda" if gpu and torch.cuda.is_available() else "cpu")
+    if g_p_u and torch.cuda.is_available():
+        device = torch.device("cuda")
+    else:
+        device = torch.device("cpu")    
+
+
+
+    tstloss = 0
+    tstacu = 0
+
     
-    # Validation on the test set
-    test_loss = 0
-    test_accuracy = 0
-    model.eval()  # We just want to evaluate and not train the model
+    model.eval()  
     with torch.no_grad():
-        for inputs, labels in testloader:
+        for inputs, labels in tstloader:
             inputs, labels = inputs.to(device), labels.to(device)
             
             logps = model.forward(inputs)
-            batch_loss = criterion(logps, labels)
-            test_loss += batch_loss.item()
-            
-            # Calculate accuracy of test set
+
+            batch_loss = st(logps, labels)
+
+            tstloss =tstloss+ batch_loss.item()
+
             ps = torch.exp(logps)
+            #### 
+
+            
             top_p, top_class = ps.topk(1, dim=1)
             equals = top_class == labels.view(*top_class.shape)
-            test_accuracy += torch.mean(equals.type(torch.FloatTensor)).item()
-    
-    print(f"Test loss: {test_loss/len(testloader):.3f}, "
-          f"Test accuracy: {test_accuracy/len(testloader):.3f}")
-    
+            
+            tstacu = tstacu+torch.mean(equals.type(torch.FloatTensor)).item()
+
+
+    resultestloss=tstloss/len(tstloader)
+    resultstacc=tstacu/len(tstloader)
+
+    print("*** CHECK  >> test loss: {:.4f}, test accuracy: {:.4f}".format(resultestloss,resultstacc ))
+    print("==========================================")    
+   
     print("***Testing network is Finished.***")
-def saving_model(model, architecture, hidden_units, epochs, learning_rate, save_dir):
-    print("Saving model ... epochs: {}, learning_rate: {}, save_dir: {}".format(epochs, learning_rate, save_dir))
+
+
     
-    checkpoint = {
-        'architecture': architecture,
-        'hidden_units': hidden_units,
-        'epochs': epochs,
-        'learning_rate': learning_rate,
+def saving_model(model, arc, hideunits, epocs, learnrate, savedircto):
+
+    print("==========================================")    
+
+    print(f"-- Currently we're saving model -- epochs: {epocs}, learning_rate: {learnrate}, save_dir: {savedircto}")    
+    cp = {
+        'architecture': arc,
+        'hidden_units': hideunits,
+        'epochs': epocs,
+        'learning_rate': learnrate,
         'model_state_dict': model.state_dict(),
         'class_to_idx': model.class_to_idx
     }
     
-    checkpoint_path = save_dir + "checkpoint.pth"
+    cp_path = savedircto + "checkpoint.pth"
+
+
+    #Saving
+    torch.save(cp, cp_path)
+    print("==========================================")    
+
+    print(f"Model is saved to {cp_path}")
+    print("==========================================")  
     
-    torch.save(checkpoint, checkpoint_path)
+def loading_model(fileP):
+    print(f"Loading and building model from {fileP}")
     
-    print("Model is saved to {}".format(checkpoint_path))
-def loading_model(filepath):
-    print("Loading and building model from {}".format(filepath))
-    
-    checkpoint = torch.load(filepath)
-    model = building_network(checkpoint['architecture'], checkpoint['hidden_units'])
-    model.load_state_dict(checkpoint['model_state_dict'])
-    model.class_to_idx = checkpoint['class_to_idx']
-    
+    #Currently loading using torch 
+    cp = torch.load(fileP)
+
+    model = building_network(cp['architecture'], cp['hidden_units'])
+
+
+    model.load_state_dict(cp['model_state_dict'])
+
+
+    model.class_to_idx = cp['class_to_idx']
+    ##DONE LOADING
     return model
-def predict(processed_image, model, topk): 
-    model.eval()
-    with torch.no_grad():
-        logps = model.forward(processed_image.unsqueeze(0))
-        ps = torch.exp(logps)
-        probs, labels = ps.topk(topk, dim=1)
-        
-        class_to_idx_inv = {model.class_to_idx[i]: i for i in model.class_to_idx}
-        classes = list()
     
-        for label in labels.numpy()[0]:
-            classes.append(class_to_idx_inv[label])
+ 
+def predict(processimg, model, tk):
+    # Set the model to evaluation mode
+    model.eval()
+    
+    # Disable gradient calculation for inference
+    with torch.no_grad():
+        # Forward pass through the model
+        sp_log = model.forward(processimg.unsqueeze(0))
+
+        # Compute the probabilities by applying softmax to the output
+        ps__ = torch.exp(sp_log)
+
+        # Get the top-k probabilities and labels
+        probs = ps__.topk(tk, dim=1) 
+        labels = ps__.topk(tk, dim=1)
         
-        return probs.numpy()[0], classes
+        # Create a dictionary to map class indices to class labels
+        classInto_idx_inv = {}
+        idx = 0
+        while idx < len(model.class_to_idx):
+            key = list(model.class_to_idx.keys())[idx]
+            value = model.class_to_idx[key]
+            classInto_idx_inv[value] = key
+            idx += 1
+            
+        # Create a list to store the predicted class labels
+        class__ = []
+        
+        # Convert labels to class labels using the dictionary
+        for label in labels.numpy()[0]:
+            class__.append(classInto_idx_inv[label])
+        
+        # Return the probabilities and predicted class labels
+        return probs.numpy()[0], class__
+
